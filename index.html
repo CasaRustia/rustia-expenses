@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Casa Rustia — Household Finance OS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0a0a'/><text x='50%25' y='56%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-family='monospace' fill='%2300ff41'>CR</text></svg>" />
+
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Hacker Terminal Fonts: VT323 (display) + Fira Code (body/mono) -->
+  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Fira+Code:wght@300;400;500;600;700&family=Source+Code+Pro:wght@300;400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ═══════════════════ HACKER TERMINAL THEME ═══════════════════ */
+    :root {
+      --bg:       #050505;
+      --surface:  #080808;
+      --card:     #0c0c0c;
+      --border:   #1a3a1a;
+      --border2:  #0f280f;
+      --green:    #00ff41;
+      --green2:   #00cc33;
+      --green3:   #007a1f;
+      --amber:    #ffb000;
+      --danger:   #ff0040;
+      --text:     #b8ffb8;
+      --text2:    #7acc7a;
+      --muted:    #2d5c2d;
+      --dim:      #1a3a1a;
+      --glow-sm:  0 0 6px rgba(0,255,65,.5);
+      --glow-md:  0 0 14px rgba(0,255,65,.4), 0 0 28px rgba(0,255,65,.15);
+      --glow-lg:  0 0 20px rgba(0,255,65,.6), 0 0 40px rgba(0,255,65,.2);
+      /* legacy aliases so JS-generated inline styles still work */
+      --glow:     #00ff41;
+      --glow2:    #00cc33;
+      --accent:   #00ff41;
+      --warn:     #ffb000;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Fira Code', 'Source Code Pro', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── CRT SCANLINES ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,.32) 2px, rgba(0,0,0,.32) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+    /* moving phosphor sweep */
+    body::after {
+      content: '';
+      position: fixed; left: 0; right: 0; height: 120px;
+      background: linear-gradient(transparent, rgba(0,255,65,.022) 50%, transparent);
+      animation: scanroll 7s linear infinite;
+      pointer-events: none; z-index: 9998;
+    }
+    @keyframes scanroll { from { top: -120px; } to { top: 100vh; } }
+
+    /* ── ANIMATIONS ── */
+    @keyframes flicker {
+      0%,19%,21%,23%,25%,54%,56%,100% { opacity:1; }
+      20%,24%,55% { opacity:.65; }
+    }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+    @keyframes box-appear {
+      from { opacity:0; transform:translateY(18px); filter:brightness(.3); }
+      to   { opacity:1; transform:translateY(0);    filter:brightness(1); }
+    }
+
+    /* ── HIDE ORBs (not used in hacker theme) ── */
+    .bg-orb { display: none; }
+
+    /* ═══════════════════ SHARED ═══════════════════ */
+    .field-label {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; font-weight: 500;
+      letter-spacing: 2px; color: var(--green);
+      margin-bottom: 8px; display: block;
+      text-shadow: var(--glow-sm);
+    }
+    .field-label::before { content: '> '; color: var(--green3); }
+
+    .field-input {
+      width: 100%; padding: 10px 14px;
+      background: #050f05;
+      border: 1px solid var(--green3); border-radius: 0;
+      color: var(--green); font-family: 'Fira Code', monospace;
+      font-size: 13px; letter-spacing: 1px; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      caret-color: var(--green);
+    }
+    .field-input::placeholder { color: var(--muted); }
+    .field-input:focus {
+      border-color: var(--green);
+      box-shadow: var(--glow-sm), inset 0 0 10px rgba(0,255,65,.04);
+      background: #060e06;
+    }
+    select.field-input { appearance: none; cursor: pointer; }
+    .field-group { margin-bottom: 16px; }
+
+    /* ═══════════════════ LOADING ═══════════════════ */
+    #loadingScreen {
+      position: fixed; inset: 0; z-index: 300;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--bg); gap: 18px;
+    }
+    .loader-logo {
+      font-family: 'VT323', monospace;
+      font-size: 52px; letter-spacing: 10px;
+      color: var(--green); text-shadow: var(--glow-lg);
+      animation: flicker 2.5s ease-in-out infinite;
+    }
+    .loader-bar {
+      width: 280px; height: 2px;
+      background: var(--border2); overflow: hidden;
+    }
+    .loader-bar::after {
+      content: ''; display: block; height: 100%; width: 50%;
+      background: var(--green); box-shadow: var(--glow-md);
+      animation: loader-slide 1s linear infinite;
+    }
+    @keyframes loader-slide { from{transform:translateX(-100%)} to{transform:translateX(250%)} }
+    .loader-text {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; letter-spacing: 3px; color: var(--text2);
+    }
+    .loader-text::after { content: '_'; animation: blink 1s step-end infinite; }
+
+    /* ═══════════════════ LOGIN ═══════════════════ */
+    #loginPage {
+      position: fixed; inset: 0; display: none;
+      align-items: center; justify-content: center;
+      z-index: 200; background: var(--bg);
+    }
+    .login-box {
+      position: relative; width: 440px; padding: 44px 40px;
+      border: 1px solid var(--green3); border-radius: 0;
+      background: var(--card);
+      box-shadow: var(--glow-md), inset 0 0 40px rgba(0,255,65,.018);
+      animation: box-appear .5s ease both;
+      outline: 1px solid var(--border2); outline-offset: 4px;
+    }
+    .login-box::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: var(--green); box-shadow: var(--glow-md);
+      animation: blink 3s ease-in-out infinite;
+    }
+    .login-box::after {
+      content: ''; position: absolute;
+      bottom: 0; left: 0; right: 0; height: 1px;
+      background: var(--green3);
+    }
+    .corner-tl, .corner-br {
+      position: absolute; width: 16px; height: 16px;
+      border-color: var(--green); border-style: solid;
+    }
+    .corner-tl { top:-4px; left:-4px; border-width:2px 0 0 2px; }
+    .corner-br { bottom:-4px; right:-4px; border-width:0 2px 2px 0; }
+
+    .login-logo { text-align: center; margin-bottom: 32px; }
+    .login-logo .casa-rustia {
+      font-family: 'VT323', monospace;
+      font-size: 48px; letter-spacing: 6px;
+      color: var(--green); text-shadow: var(--glow-lg);
+      animation: flicker 5s ease-in-out infinite; display: block;
+    }
+    .login-logo .sub {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px; letter-spacing: 3px;
+      color: var(--text2); margin-top: 4px; display: block;
+    }
+    .login-logo .sub::before { content: '[ '; }
+    .login-logo .sub::after  { content: ' ]'; }
+
+    .auth-tabs {
+      display: flex; gap: 0; margin-bottom: 24px;
+      border-bottom: 1px solid var(--green3);
+    }
+    .auth-tab {
+      flex: 1; padding: 8px 12px;
+      background: transparent; border: none;
+      border-bottom: 2px solid transparent;
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; letter-spacing: 2px;
+      color: var(--muted); cursor: pointer;
+      transition: all .15s; margin-bottom: -1px;
+    }
+    .auth-tab.active { color:var(--green); border-bottom-color:var(--green); text-shadow:var(--glow-sm); }
+    .auth-tab:hover:not(.active) { color: var(--text2); }
+
+    .login-btn {
+      width: 100%; padding: 12px;
+      background: transparent; border: 1px solid var(--green); border-radius: 0;
+      color: var(--green); font-family: 'VT323', monospace;
+      font-size: 22px; letter-spacing: 4px; cursor: pointer;
+      position: relative; overflow: hidden; transition: all .15s;
+      text-shadow: var(--glow-sm); margin-top: 6px; box-shadow: var(--glow-sm);
+    }
+    .login-btn::before {
+      content: ''; position: absolute; top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(0,255,65,.1), transparent);
+      transition: left .4s;
+    }
+    .login-btn:hover::before { left: 100%; }
+    .login-btn:hover { background: rgba(0,255,65,.07); box-shadow: var(--glow-md); }
+    .login-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .login-error {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; color: var(--danger);
+      margin-top: 12px; text-align: center;
+      min-height: 18px; letter-spacing: 1px; line-height: 1.6;
+    }
+    .login-error:not(:empty)::before { content: '! '; }
+
+    /* ═══════════════════ MAIN APP ═══════════════════ */
+    #app {
+      display: none; position: relative; z-index: 1;
+      min-height: 100vh; padding: 20px 24px;
+      animation: box-appear .4s ease both;
+    }
+
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; padding-bottom: 14px;
+      border-bottom: 1px solid var(--green3);
+      flex-wrap: wrap; gap: 12px;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .logo-text {
+      font-family: 'VT323', monospace;
+      font-size: 30px; letter-spacing: 5px;
+      color: var(--green); text-shadow: var(--glow-md);
+      animation: flicker 7s ease-in-out infinite;
+    }
+    .logo-badge {
+      font-family: 'Fira Code', monospace;
+      font-size: 9px; letter-spacing: 2px;
+      border: 1px solid var(--green3); color: var(--text2); padding: 3px 8px;
+    }
+    .topbar-right { display: flex; align-items: center; gap: 12px; }
+    .status-dot {
+      width: 8px; height: 8px;
+      background: var(--green); box-shadow: var(--glow-sm);
+      animation: blink 2s step-end infinite;
+    }
+    .user-badge {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; color: var(--text2); letter-spacing: 1px;
+    }
+    .user-badge::before { content: '$ '; color: var(--green3); }
+    .save-indicator {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--green); opacity: 0;
+      transition: opacity .3s; text-shadow: var(--glow-sm);
+    }
+    .save-indicator.visible { opacity: 1; }
+    .logout-btn {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px; letter-spacing: 2px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); padding: 5px 12px; cursor: pointer; transition: all .15s;
+    }
+    .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+    .month-bar { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px; }
+    .month-nav { display:flex;align-items:center;gap:12px; }
+    .month-nav button {
+      background: var(--card); border: 1px solid var(--green3);
+      color: var(--green); width: 32px; height: 32px;
+      cursor: pointer; font-size: 18px; font-family: 'Fira Code', monospace;
+      display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    .month-nav button:hover { border-color:var(--green); box-shadow:var(--glow-sm); background:rgba(0,255,65,.05); }
+    .month-title { font-family:'VT323',monospace; font-size:28px; letter-spacing:4px; color:var(--text); }
+    .month-title span { color:var(--green); text-shadow:var(--glow-sm); }
+
+    .kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; margin-bottom:20px; }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border);
+      padding: 16px 18px; position: relative; overflow: hidden;
+    }
+    .kpi-card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; }
+    .kpi-card.income::before  { background:var(--green);  box-shadow:var(--glow-sm); }
+    .kpi-card.expense::before { background:var(--danger); box-shadow:0 0 6px rgba(255,0,64,.5); }
+    .kpi-card.balance::before { background:var(--green2); box-shadow:var(--glow-sm); }
+    .kpi-card.remaining::before { background:var(--amber); box-shadow:0 0 6px rgba(255,176,0,.5); }
+    .kpi-label {
+      font-family: 'Fira Code', monospace;
+      font-size: 9px; letter-spacing: 2px; color:var(--muted); margin-bottom:8px;
+    }
+    .kpi-label::before { content: '// '; color: var(--green3); }
+    .kpi-value { font-family:'VT323',monospace; font-size:32px; letter-spacing:2px; }
+    .kpi-card.income .kpi-value   { color:var(--green);  text-shadow:var(--glow-sm); }
+    .kpi-card.expense .kpi-value  { color:var(--danger); }
+    .kpi-card.balance .kpi-value  { color:var(--green2); text-shadow:var(--glow-sm); }
+    .kpi-card.remaining .kpi-value{ color:var(--amber); }
+
+    .tabs { display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid var(--green3); }
+    .tab {
+      font-family:'Fira Code',monospace; font-size:10px; letter-spacing:2px;
+      padding:9px 18px; background:transparent; border:none;
+      color:var(--muted); cursor:pointer;
+      border-bottom:2px solid transparent; transition:all .15s; margin-bottom:-1px;
+    }
+    .tab.active { color:var(--green); border-bottom-color:var(--green); text-shadow:var(--glow-sm); }
+    .tab:hover:not(.active) { color:var(--text2); }
+
+    .table-wrapper { background:var(--card); border:1px solid var(--border); overflow:auto; position:relative; }
+    .table-loading {
+      position:absolute; inset:0; background:rgba(5,5,5,.88);
+      display:flex; align-items:center; justify-content:center; z-index:10;
+      font-family:'Fira Code',monospace; font-size:12px; letter-spacing:3px;
+      color:var(--green); text-shadow:var(--glow-sm);
+    }
+    .table-loading::after { content:'_'; animation:blink 1s step-end infinite; }
+    .table-loading.hidden { display:none; }
+
+    table { width:100%; border-collapse:collapse; font-size:13px; min-width:800px; }
+
+    thead th {
+      background: #070e07; padding:11px 14px; text-align:right;
+      font-family:'Fira Code',monospace; font-size:9px; letter-spacing:2px;
+      color:var(--green); border-bottom:1px solid var(--green3);
+      white-space:nowrap; position:sticky; top:0; z-index:2;
+    }
+    thead th:first-child { text-align:left; width:210px; }
+    thead th.sub { color:var(--text2); font-size:9px; font-weight:300; }
+
+    .section-row td {
+      background: #060d06; padding:7px 14px;
+      font-family:'Fira Code',monospace; font-size:9px; letter-spacing:3px;
+      color:var(--green3); border-top:1px solid var(--border2); border-bottom:1px solid var(--border2);
+    }
+    .section-row td::before { content:'> '; color:var(--green); }
+
+    tbody tr:not(.section-row):not(.total-row):not(.add-row) { transition:background .1s; }
+    tbody tr:not(.section-row):not(.total-row):not(.add-row):hover { background:rgba(0,255,65,.03); }
+
+    tbody td {
+      padding:9px 14px; border-bottom:1px solid var(--border2);
+      text-align:right; font-family:'Fira Code',monospace; font-size:12px; color:var(--text);
+    }
+    tbody td:first-child { text-align:left; color:var(--text2); }
+    tbody td.amount-cell { color:var(--muted); }
+    tbody td.amount-cell.has-value { color:var(--text); }
+    tbody td.total-col { color:var(--amber); font-weight:600; }
+    tbody td.remain-pos { color:var(--green); text-shadow:var(--glow-sm); }
+    tbody td.remain-neg { color:var(--danger); }
+    tbody td.remain-zero { color:var(--muted); }
+
+    .total-row td {
+      background:#060e06; border-top:1px solid var(--green3); border-bottom:1px solid var(--green3);
+      font-family:'VT323',monospace; font-size:18px; font-weight:400;
+      padding:10px 14px; color:var(--green); text-align:right;
+      text-shadow:var(--glow-sm); letter-spacing:1px;
+    }
+    .total-row td:first-child { text-align:left; letter-spacing:2px; }
+
+    td.editable input {
+      background:transparent; border:none; outline:none;
+      width:100%; text-align:right; font-family:'Fira Code',monospace;
+      font-size:12px; color:inherit; padding:0; caret-color:var(--green);
+    }
+    td.editable:focus-within { background:rgba(0,255,65,.04); box-shadow:inset 0 0 0 1px rgba(0,255,65,.2); }
+    td.name-editable input { text-align:left; font-family:'Fira Code',monospace; font-size:12px; width:100%; }
+
+    .add-row td { padding:7px 14px; border-bottom:none; }
+    .add-row-btn {
+      font-family:'Fira Code',monospace; font-size:10px; letter-spacing:2px;
+      background:transparent; border:1px dashed var(--border);
+      color:var(--muted); padding:5px 14px; cursor:pointer; transition:all .15s; white-space:nowrap;
+    }
+    .add-row-btn::before { content:'+ '; }
+    .add-row-btn:hover { border-color:var(--green); border-style:solid; color:var(--green); background:rgba(0,255,65,.03); text-shadow:var(--glow-sm); }
+
+    .del-btn {
+      background:transparent; border:none; color:var(--border);
+      cursor:pointer; font-size:15px; padding:2px 5px; transition:color .15s; line-height:1;
+    }
+    .del-btn:hover { color:var(--danger); }
+
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:500; align-items:center; justify-content:center; }
+    .modal-overlay.open { display:flex; }
+    .modal {
+      background:var(--card); border:1px solid var(--green3);
+      outline:1px solid var(--border2); outline-offset:3px;
+      padding:32px; width:440px; position:relative;
+      animation:box-appear .25s ease both; box-shadow:var(--glow-md);
+    }
+    .modal::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:1px;
+      background:var(--green); box-shadow:var(--glow-sm);
+    }
+    .modal h3 { font-family:'VT323',monospace; font-size:26px; letter-spacing:4px; color:var(--green); margin-bottom:22px; text-shadow:var(--glow-sm); }
+    .modal h3::before { content:'> '; color:var(--green3); }
+    .modal .field-group { margin-bottom:16px; }
+    .modal .field-label { font-size:10px; }
+    .modal-actions { display:flex; gap:10px; margin-top:22px; }
+    .modal-confirm-btn {
+      flex:1; padding:10px; background:rgba(0,255,65,.07); border:1px solid var(--green);
+      color:var(--green); font-family:'VT323',monospace; font-size:20px; letter-spacing:3px;
+      cursor:pointer; transition:all .15s; text-shadow:var(--glow-sm);
+    }
+    .modal-confirm-btn:hover { background:rgba(0,255,65,.13); box-shadow:var(--glow-sm); }
+    .modal-cancel-btn {
+      padding:10px 18px; background:transparent; border:1px solid var(--border);
+      color:var(--muted); font-family:'Fira Code',monospace; font-size:11px; cursor:pointer; transition:all .15s;
+    }
+    .modal-cancel-btn:hover { border-color:var(--danger); color:var(--danger); }
+
+    .toast {
+      position:fixed; bottom:22px; right:22px;
+      background:var(--card); border:1px solid var(--green3); border-left:3px solid var(--green);
+      padding:10px 18px; font-family:'Fira Code',monospace;
+      font-size:11px; color:var(--green); letter-spacing:1px;
+      z-index:999; transform:translateY(60px); opacity:0;
+      transition:all .25s cubic-bezier(.22,1,.36,1); pointer-events:none; box-shadow:var(--glow-sm);
+    }
+    .toast.show { transform:translateY(0); opacity:1; }
+
+    /* Remaining column editable overlay */
+    td.remain-td { position: relative; }
+    td.remain-td:focus-within {
+      background: rgba(0,255,65,.04);
+      box-shadow: inset 0 0 0 1px rgba(0,255,65,.2);
+    }
+    td.remain-td:focus-within .row-rem-display { display: none !important; }
+    td.remain-td input::placeholder {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 1px;
+      opacity: 0.5;
+    }
+
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--green3); }
+    ::-webkit-scrollbar-thumb:hover { background:var(--green); }
+
+    /* ═══════════════════════════════════════════════
+       RESPONSIVE — Mobile / Tablet / Laptop / Desktop
+    ═══════════════════════════════════════════════ */
+
+    /* ── BASE: make table horizontally scrollable on ALL screen sizes ── */
+    .table-wrapper { -webkit-overflow-scrolling: touch; }
+    table { min-width: 600px; }
+
+    /* ── LAPTOP / DESKTOP  ≥ 1024px ── */
+    @media (min-width: 1024px) {
+      #app { padding: 24px 32px; }
+      .kpi-row { grid-template-columns: repeat(4, 1fr); }
+      .logo-text { font-size: 30px; }
+      .kpi-value { font-size: 32px; }
+      table { min-width: 800px; }
+      thead th { font-size: 9px; padding: 12px 14px; }
+      tbody td  { font-size: 12px; padding: 10px 14px; }
+    }
+
+    /* ── TABLET  768px – 1023px ── */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      #app { padding: 18px 20px; }
+      .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .kpi-value { font-size: 26px; }
+      .logo-text { font-size: 24px; letter-spacing: 3px; }
+      .logo-badge { display: none; }
+      .month-title { font-size: 24px; }
+      table { min-width: 680px; }
+      thead th { font-size: 8px; padding: 10px 10px; }
+      tbody td  { font-size: 11px; padding: 8px 10px; }
+      tbody td:first-child { min-width: 140px; }
+      .save-indicator { display: none; }
+    }
+
+    /* ── MOBILE  < 768px ── */
+    @media (max-width: 767px) {
+      /* App container */
+      #app { padding: 12px 14px; }
+
+      /* ── Topbar: stack logo row + user row ── */
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding-bottom: 10px;
+        margin-bottom: 14px;
+      }
+      .topbar-left { gap: 8px; }
+      .logo-text { font-size: 22px; letter-spacing: 3px; }
+      .logo-badge { display: none; }
+      .topbar-right { width: 100%; justify-content: space-between; }
+      .save-indicator { display: none; }
+      .user-badge { font-size: 10px; }
+      .logout-btn { font-size: 10px; padding: 5px 10px; }
+
+      /* ── Month nav ── */
+      .month-bar { margin-bottom: 14px; }
+      .month-title { font-size: 20px; letter-spacing: 2px; }
+      .month-nav button { width: 34px; height: 34px; font-size: 20px; }
+
+      /* ── KPI cards: 2 columns on mobile ── */
+      .kpi-row { grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+      .kpi-card { padding: 12px 14px; }
+      .kpi-label { font-size: 8px; letter-spacing: 1px; margin-bottom: 4px; }
+      .kpi-value { font-size: 20px; letter-spacing: 1px; }
+
+      /* ── Tabs ── */
+      .tab { font-size: 9px; letter-spacing: 1px; padding: 8px 12px; }
+
+      /* ── Table: horizontal scroll with sticky first column ── */
+      .table-wrapper { overflow-x: auto; overflow-y: visible; }
+      table { min-width: 560px; }
+      thead th { font-size: 8px; padding: 9px 8px; letter-spacing: 1px; }
+      thead th:first-child { min-width: 120px; position: sticky; left: 0; background: #070e07; z-index: 3; }
+      tbody td { font-size: 11px; padding: 8px 8px; }
+      tbody td:first-child { min-width: 120px; max-width: 140px; position: sticky; left: 0; background: var(--card); z-index: 1; }
+      tbody tr:hover td:first-child { background: #0d150d; }
+      .section-row td { position: sticky; left: 0; background: #060d06; font-size: 8px; letter-spacing: 2px; }
+      .total-row td:first-child { position: sticky; left: 0; background: #060e06; z-index: 1; }
+      .add-row td { padding: 6px 8px; }
+      .add-row-btn { font-size: 9px; padding: 5px 10px; letter-spacing: 1px; }
+
+      /* ── Login box ── */
+      .login-box { width: calc(100vw - 28px); padding: 28px 18px; }
+      .login-logo .casa-rustia { font-size: 36px; letter-spacing: 4px; }
+      .login-logo .sub { font-size: 9px; letter-spacing: 2px; }
+      .auth-tab { font-size: 10px; letter-spacing: 1px; }
+      .login-btn { font-size: 18px; letter-spacing: 3px; }
+      .field-input { font-size: 12px; padding: 9px 12px; }
+
+      /* ── Modal ── */
+      .modal { width: calc(100vw - 28px); padding: 24px 18px; }
+      .modal h3 { font-size: 20px; }
+      .modal-confirm-btn { font-size: 16px; }
+
+      /* ── Toast ── */
+      .toast { left: 14px; right: 14px; bottom: 14px; font-size: 10px; padding: 10px 14px; }
+
+      /* ── Fix 9: iOS auto-zoom prevention (Safari zooms if font-size < 16px on focus) ── */
+      input, select, textarea { font-size: 16px !important; }
+    }
+
+    /* ── SMALL MOBILE  < 400px ── */
+    @media (max-width: 399px) {
+      .kpi-row { grid-template-columns: 1fr 1fr; }
+      .kpi-value { font-size: 16px; }
+      .logo-text { font-size: 18px; letter-spacing: 2px; }
+      .month-title { font-size: 17px; }
+      table { min-width: 480px; }
+      thead th:first-child, tbody td:first-child { min-width: 100px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BG ORBS -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
+  <!-- ══════════ LOADING SCREEN ══════════ -->
+  <div id="loadingScreen">
+    <div class="loader-logo">CASA RUSTIA</div>
+    <div class="loader-bar"></div>
+    <div class="loader-text">INITIALIZING SESSION...</div>
+  </div>
+
+  <!-- ══════════ LOGIN PAGE ══════════ -->
+  <div id="loginPage">
+    <div class="login-box">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+
+      <div class="login-logo">
+        <div class="casa-rustia">CASA RUSTIA</div>
+        <div class="sub">HOUSEHOLD FINANCE OS · v2.6</div>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignIn" onclick="switchAuthTab('signin')">SIGN IN</button>
+        <button class="auth-tab" id="tabSignUp" onclick="switchAuthTab('signup')">SIGN UP</button>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">// EMAIL ADDRESS</label>
+        <input class="field-input" id="authEmail" type="email" placeholder="user@example.com" autocomplete="email" />
+      </div>
+      <div class="field-group">
+        <label class="field-label">// PASSWORD</label>
+        <input class="field-input" id="authPassword" type="password" placeholder="············" autocomplete="current-password" />
+      </div>
+
+      <button class="login-btn" id="authBtn" onclick="handleAuth()">INITIALIZE SESSION ›</button>
+      <div class="login-error" id="authError"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ MAIN APP ══════════ -->
+  <div id="app">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="logo-text">CASA RUSTIA</div>
+        <div class="logo-badge">BUDGET OS</div>
+      </div>
+      <div class="topbar-right">
+        <div class="status-dot"></div>
+        <div class="user-badge" id="userLabel">USER: —</div>
+        <div class="save-indicator" id="saveIndicator">// SAVED ✓</div>
+        <button class="logout-btn" onclick="doLogout()">LOGOUT</button>
+      </div>
+    </div>
+
+    <!-- MONTH NAV -->
+    <div class="month-bar">
+      <div class="month-nav">
+        <button onclick="prevMonth()">‹</button>
+        <div class="month-title" id="monthTitle">APRIL <span>2026</span></div>
+        <button onclick="nextMonth()">›</button>
+      </div>
+    </div>
+
+    <!-- KPI ROW -->
+    <div class="kpi-row">
+      <div class="kpi-card income">
+        <div class="kpi-label">TOTAL INCOME</div>
+        <div class="kpi-value" id="kpiIncome">₱0.00</div>
+      </div>
+      <div class="kpi-card expense">
+        <div class="kpi-label">TOTAL EXPENSES</div>
+        <div class="kpi-value" id="kpiExpense">₱0.00</div>
+      </div>
+      <div class="kpi-card balance">
+        <div class="kpi-label">NET BALANCE</div>
+        <div class="kpi-value" id="kpiBalance">₱0.00</div>
+      </div>
+      <div class="kpi-card remaining">
+        <div class="kpi-label">% OF INCOME SPENT</div>
+        <div class="kpi-value" id="kpiRemaining">0% SPENT</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab active">WEEKLY BUDGET MATRIX</button>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrapper" style="position:relative;">
+      <div class="table-loading" id="tableLoading">// FETCHING DATA...</div>
+      <table id="budgetTable">
+        <thead>
+          <tr id="theadRow">
+            <th style="text-align:left;">CATEGORY / ITEM</th>
+            <th>TOTAL</th>
+            <th>REMAINING</th>
+            <th style="width:32px;"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ADD ROW MODAL -->
+  <div class="modal-overlay" id="addModal">
+    <div class="modal">
+      <h3>ADD NEW ENTRY</h3>
+      <div class="field-group">
+        <label class="field-label">// CATEGORY</label>
+        <select class="field-input" id="modalCategory">
+          <option value="INCOME">INCOME</option>
+          <option value="LOANS">LOANS</option>
+          <option value="HOUSING">HOUSING</option>
+          <option value="EDUCATION">EDUCATION</option>
+          <option value="UTILITIES">UTILITIES</option>
+          <option value="PLANS">PLANS</option>
+          <option value="ALLOWANCE">ALLOWANCE</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">// ITEM NAME</label>
+        <input class="field-input" id="modalName" type="text" placeholder="e.g. Electricity" />
+      </div>
+      <div class="modal-actions">
+        <button class="modal-confirm-btn" onclick="confirmAddRow()">ADD ENTRY</button>
+        <button class="modal-cancel-btn" onclick="closeModal()">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* ══════════════════════════════════════════════════
+       ⚠️  CONFIGURATION — Replace with your Supabase values
+       Get these from: Supabase Dashboard → Project Settings → API
+    ═══════════════════════════════════════════════════ */
+    const SUPABASE_URL      = 'https://dnvzzlcyintbqehbxigr.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRudnp6bGN5aW50YnFlaGJ4aWdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNjQ1NTQsImV4cCI6MjA4OTc0MDU1NH0.L34re27ZhFBKMAHhyGkXeBww8-mRNP0bgavWiBytxFs';
+
+    /* ══════════════════════════════════════════════════
+       SUPABASE CLIENT INIT
+    ═══════════════════════════════════════════════════ */
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ══════════════════════════════════════════════════
+       STATE
+    ═══════════════════════════════════════════════════ */
+    let currentUser  = null;
+    // Fix 1: default to current real date, not hardcoded April 2026
+    let currentYear  = new Date().getFullYear();
+    let currentMonth = new Date().getMonth(); // 0-indexed
+    let cache        = {};          // in-memory cache  key → monthData
+    let saveTimer    = null;
+    let authMode     = 'signin';    // 'signin' | 'signup'
+
+    const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                    'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+    const CATS   = ['INCOME','LOANS','HOUSING','EDUCATION','UTILITIES','PLANS','ALLOWANCE'];
+
+    /* ══════════════════════════════════════════════════
+       AUTH
+    ═══════════════════════════════════════════════════ */
+    function switchAuthTab(mode) {
+      authMode = mode;
+      document.getElementById('tabSignIn').classList.toggle('active', mode === 'signin');
+      document.getElementById('tabSignUp').classList.toggle('active', mode === 'signup');
+      document.getElementById('authBtn').textContent =
+        mode === 'signin' ? 'INITIALIZE SESSION ›' : 'CREATE ACCOUNT ›';
+      const errEl = document.getElementById('authError');
+      errEl.textContent = '';
+      errEl.style.color = 'var(--danger)'; // BUG 6 FIX: always reset colour on tab switch
+      document.getElementById('authPassword').autocomplete =
+        mode === 'signin' ? 'current-password' : 'new-password';
+    }
+
+    async function handleAuth() {
+      const email    = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const btn      = document.getElementById('authBtn');
+      const errEl    = document.getElementById('authError');
+
+      if (!email || !password) {
+        errEl.textContent = '// ERROR — email and password required';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '// CONNECTING...';
+      errEl.textContent = '';
+
+      let result;
+      try {
+        if (authMode === 'signin') {
+          result = await db.auth.signInWithPassword({ email, password });
+        } else {
+          result = await db.auth.signUp({ email, password });
+        }
+      } catch (err) {
+        // Fix 8: SDK-level failure (network down, init error) — result would be undefined
+        btn.disabled = false;
+        switchAuthTab(authMode);
+        errEl.textContent = '// CONNECTION ERROR — check your internet and try again';
+        shakeLogin();
+        return;
+      }
+
+      btn.disabled = false;
+      switchAuthTab(authMode); // restore button text
+
+      if (result && result.error) {
+        // The most common 400 cause is unconfirmed email — surface a clear message
+        const msg = result.error.message.toLowerCase();
+        let display = '// ' + result.error.message.toUpperCase();
+        if (msg.includes('invalid login') || msg.includes('email not confirmed') || msg.includes('bad request')) {
+          display = '// LOGIN FAILED — if you just signed up, check your email to confirm your account first. Or go to Supabase → Auth → Settings and disable email confirmation.';
+        }
+        errEl.textContent = display;
+        shakeLogin();
+        return;
+      }
+
+      if (authMode === 'signup' && result && result.data && !result.data.session) {
+        errEl.style.color = 'var(--accent)';
+        errEl.textContent = '// CHECK YOUR EMAIL TO CONFIRM YOUR ACCOUNT';
+      }
+      // onAuthStateChange handles the rest
+    }
+
+    function shakeLogin() {
+      const box = document.querySelector('.login-box');
+      [10, -10, 5, 0].forEach((x, i) =>
+        setTimeout(() => { box.style.transform = `translateX(${x}px)`; }, i * 80));
+    }
+
+    async function doLogout() {
+      clearTimeout(saveTimer);
+      currentUser = null;  // clear immediately, don't wait for async listener
+      cache = {};
+      try {
+        await db.auth.signOut();
+      } catch (err) {
+        // Fix 4: signOut failure — UI already reset, just warn, never block the user
+        console.warn('doLogout signOut:', err.message || err);
+      }
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('loginPage').style.display = 'flex';
+      document.getElementById('authEmail').value = '';
+      document.getElementById('authPassword').value = '';
+      document.getElementById('authError').textContent = '';
+      document.getElementById('authError').style.color = 'var(--danger)';
+    }
+
+    document.getElementById('authPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleAuth();
+    });
+
+    /* ══════════════════════════════════════════════════
+       AUTH STATE LISTENER  (runs on page load + every auth change)
+    ═══════════════════════════════════════════════════ */
+    db.auth.onAuthStateChange(async (event, session) => {
+      // Hide the splash screen once Supabase has responded
+      document.getElementById('loadingScreen').style.display = 'none';
+
+      if (session && session.user) {
+        // BUG 1 FIX: Only load & render on actual sign-in / initial session.
+        // TOKEN_REFRESHED and USER_UPDATED must NOT trigger a re-render —
+        // that would wipe any in-progress cell edits every hour.
+        const isFirstLoad = !currentUser;
+        currentUser = session.user;
+        const handle = session.user.email.split('@')[0].toUpperCase();
+        document.getElementById('userLabel').textContent = 'USER: ' + handle;
+
+        if (isFirstLoad) {
+          document.getElementById('loginPage').style.display = 'none';
+          document.getElementById('app').style.display = 'block';
+          await loadAndRender();
+        }
+      } else {
+        currentUser = null;
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginPage').style.display = 'flex';
+      }
+    });
+
+    /* ══════════════════════════════════════════════════
+       SUPABASE DATA LAYER
+    ═══════════════════════════════════════════════════ */
+    function mKey(y, m) { return `${y}-${m}`; }
+
+    async function fetchMonthFromDB(y, m) {
+      // Use AbortController so the actual HTTP request is cancelled on timeout.
+      // Promise.race() + Supabase thenables caused the "timed out" console errors
+      // because the request kept running after the timeout rejected.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const { data, error } = await db
+          .from('budgets')
+          .select('data')
+          .eq('user_id', currentUser.id)
+          .eq('month_key', mKey(y, m))
+          .abortSignal(controller.signal)
+          .maybeSingle();
+
+        clearTimeout(timer);
+        if (error) {
+          if (error.name === 'AbortError') return null; // silent abort/timeout
+          const isMissing = error.code === '42P01' ||
+            (error.message && error.message.toLowerCase().includes('does not exist'));
+          if (isMissing) {
+            showToast('// TABLE MISSING — run setup.sql in Supabase SQL Editor!', true);
+          } else {
+            console.warn('fetchMonthFromDB:', error.message || error);
+          }
+          return null;
+        }
+        return data ? data.data : null;
+      } catch (err) {
+        clearTimeout(timer);
+        // AbortError = timeout, completely expected — silent
+        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('abort'))) {
+          return null;
+        }
+        console.warn('fetchMonthFromDB:', err.message || err);
+        return null;
+      }
+    }
+
+    async function upsertMonthToDB(y, m) {
+      if (!currentUser) return 'NO_USER';
+      const payload = {
+        user_id:   currentUser.id,
+        month_key: mKey(y, m),
+        data:      cache[mKey(y, m)],
+      };
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const { error } = await db
+          .from('budgets')
+          .upsert(payload, { onConflict: 'user_id,month_key' })
+          .abortSignal(controller.signal);
+
+        clearTimeout(timer);
+        if (error) {
+          if (error.name === 'AbortError') {
+            showToast('// SAVE TIMEOUT — data not saved, check connection', true);
+            return 'TIMEOUT';
+          }
+          const isMissing = error.code === '42P01' ||
+            (error.message && error.message.toLowerCase().includes('does not exist'));
+          if (isMissing) return 'TABLE_MISSING'; // expected, no console noise
+          console.warn('upsertMonthToDB:', error.message || error);
+          showToast('// SAVE FAILED — ' + error.message, true);
+          return 'ERROR';
+        }
+        showSaved();
+        return 'OK';
+      } catch (err) {
+        clearTimeout(timer);
+        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('abort'))) {
+          showToast('// SAVE TIMEOUT — check your connection', true);
+          return 'TIMEOUT'; // expected abort, no console noise
+        }
+        console.warn('upsertMonthToDB:', err.message || err);
+        return 'ERROR';
+      }
+    }
+
+    // withTimeout() removed — AbortController handles timeouts directly above.
+
+    function scheduleSave() {
+      // BUG 11 FIX: capture year/month BY VALUE right now, not when the timeout fires.
+      // Without this, navigating months within the 900ms window would save the edited
+      // data into the newly-selected month's record instead of the one that was changed.
+      const y = currentYear;
+      const m = currentMonth;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => upsertMonthToDB(y, m), 900);
+    }
+
+    function showSaved() {
+      const el = document.getElementById('saveIndicator');
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 1800);
+    }
+
+    /* ══════════════════════════════════════════════════
+       DATA DEFAULTS
+    ═══════════════════════════════════════════════════ */
+    let _uid = Date.now();
+    function uid() { return (++_uid).toString(36); }
+
+    function getWeekStarts(year, month) {
+      // BUG 8 FIX: removed unused `first` variable
+      const days = [];
+      let d = 1;
+      while (d <= new Date(year, month + 1, 0).getDate()) {
+        days.push(d);
+        d += 7;
+      }
+      return days.slice(0, 5);
+    }
+
+    function buildDefaultRows() {
+      return [
+        { id:uid(), cat:'INCOME',    name:'Expected Salary (Tatay)',       amounts:{}, budget:0 },
+        { id:uid(), cat:'INCOME',    name:'Expected Salary (Mima)',        amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'Home Credit Cash Loan',         amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'200K Loan | Laptops',           amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'Atome - Tatay',                 amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'Atome - Mima',                  amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'BillEase',                      amounts:{}, budget:0 },
+        { id:uid(), cat:'LOANS',     name:'PesoLoan',                      amounts:{}, budget:0 },
+        { id:uid(), cat:'HOUSING',   name:'House Rental',                  amounts:{}, budget:0 },
+        { id:uid(), cat:'EDUCATION', name:"Chad's Tuition",                amounts:{}, budget:0 },
+        { id:uid(), cat:'EDUCATION', name:"Lilo's Tuition",                amounts:{}, budget:0 },
+        { id:uid(), cat:'UTILITIES', name:'Electric Bill',                 amounts:{}, budget:0 },
+        { id:uid(), cat:'UTILITIES', name:'Water Bill',                    amounts:{}, budget:0 },
+        { id:uid(), cat:'UTILITIES', name:'WiFi',                          amounts:{}, budget:0 },
+        { id:uid(), cat:'PLANS',     name:'Plan Tatay',                    amounts:{}, budget:0 },
+        { id:uid(), cat:'PLANS',     name:'Plan Mima',                     amounts:{}, budget:0 },
+        { id:uid(), cat:'ALLOWANCE', name:'Home Allowance + Groceries',    amounts:{}, budget:0 },
+      ];
+    }
+
+    function buildDefaultData(y, m) {
+      return { weeks: getWeekStarts(y, m), rows: buildDefaultRows() };
+    }
+
+    // seedApril2026 removed — see Bug 14 fix above.
+
+    async function ensureMonthLoaded(y, m) {
+      const k = mKey(y, m);
+      if (cache[k]) return;
+
+      const remote = await fetchMonthFromDB(y, m);
+      if (remote) {
+        cache[k] = remote;
+      } else {
+        const fresh = buildDefaultData(y, m);
+        cache[k] = fresh;
+        const result = await upsertMonthToDB(y, m);
+        if (result === 'TABLE_MISSING') {
+          // Table doesn't exist — throw so caller can show setup instructions
+          throw new Error('SUPABASE_TABLE_MISSING');
+        }
+        // Fix 6: if upsert failed for any other reason (network, etc.), remove from
+        // cache so next visit retries the fetch instead of silently looping on stale defaults
+        if (result === 'ERROR' || result === 'TIMEOUT') {
+          delete cache[k];
+        }
+      }
+    }
+
+    /* ══════════════════════════════════════════════════
+       RENDER
+    ═══════════════════════════════════════════════════ */
+    let isLoading = false; // BUG 2 FIX: guard against concurrent month navigation
+
+    // Bug B fix: render error message directly into tbody so it's visible
+    // after tableLoading is hidden by finally. Never put errors inside tableLoading.
+    function showDbError(msg, hint) {
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = `<tr><td colspan="99" style="
+        text-align:center;padding:60px 20px;
+        font-family:Fira Code,monospace;
+        color:var(--danger);letter-spacing:2px;
+        line-height:2.8;font-size:12px;">
+        ${msg}<br>
+        <span style="color:var(--muted);font-size:11px;">${hint}</span>
+      </td></tr>`;
+    }
+
+    async function loadAndRender() {
+      // Fix 5: prevent concurrent calls (e.g. two rapid TOKEN_REFRESHED events)
+      if (isLoading) return;
+      isLoading = true;
+      document.getElementById('tableLoading').classList.remove('hidden');
+      try {
+        await ensureMonthLoaded(currentYear, currentMonth);
+        renderTable();
+        refreshKPI();
+      } catch (err) {
+        if (err.message === 'SUPABASE_TABLE_MISSING') {
+          // Expected — table not set up yet, no console noise
+          showDbError(
+            '// DATABASE NOT SET UP',
+            'Go to Supabase → SQL Editor → paste and run setup.sql'
+          );
+        } else {
+          console.warn('loadAndRender:', err.message || err);
+          showDbError('// FAILED TO LOAD DATA', 'Check console for details');
+          showToast('// ERROR — could not load data', true);
+        }
+      } finally {
+        document.getElementById('tableLoading').classList.add('hidden');
+        isLoading = false; // Fix 5: always release lock
+      }
+    }
+
+    async function prevMonth() {
+      if (isLoading) return;
+      isLoading = true;
+      currentMonth--;
+      if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+      updateMonthTitle();
+      document.getElementById('tableLoading').classList.remove('hidden');
+      try {
+        await ensureMonthLoaded(currentYear, currentMonth);
+        renderTable();
+        refreshKPI();
+      } catch (err) {
+        if (err.message === 'SUPABASE_TABLE_MISSING') {
+          showDbError('// DATABASE NOT SET UP', 'Go to Supabase → SQL Editor → run setup.sql');
+        } else {
+          console.warn('prevMonth:', err.message || err);
+          showToast('// ERROR LOADING MONTH DATA', true);
+        }
+      } finally {
+        document.getElementById('tableLoading').classList.add('hidden');
+        isLoading = false;
+      }
+    }
+
+    async function nextMonth() {
+      if (isLoading) return;
+      isLoading = true;
+      currentMonth++;
+      if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+      updateMonthTitle();
+      document.getElementById('tableLoading').classList.remove('hidden');
+      try {
+        await ensureMonthLoaded(currentYear, currentMonth);
+        renderTable();
+        refreshKPI();
+      } catch (err) {
+        if (err.message === 'SUPABASE_TABLE_MISSING') {
+          showDbError('// DATABASE NOT SET UP', 'Go to Supabase → SQL Editor → run setup.sql');
+        } else {
+          console.warn('nextMonth:', err.message || err);
+          showToast('// ERROR LOADING MONTH DATA', true);
+        }
+      } finally {
+        document.getElementById('tableLoading').classList.add('hidden');
+        isLoading = false;
+      }
+    }
+
+    function updateMonthTitle() {
+      document.getElementById('monthTitle').innerHTML =
+        MONTHS[currentMonth] + ' <span>' + currentYear + '</span>';
+    }
+
+    function renderTable() {
+      updateMonthTitle();
+      const data = cache[mKey(currentYear, currentMonth)];
+      // Fix 2: guard against missing cache — can happen if ensureMonthLoaded threw
+      if (!data || !data.weeks || !data.rows) {
+        showDbError('// NO DATA FOR THIS MONTH', 'Navigate to another month or refresh the page');
+        return;
+      }
+      const weeks = data.weeks;
+      const rows  = data.rows;
+
+      // Rebuild thead
+      const theadRow = document.getElementById('theadRow');
+      while (theadRow.children.length > 1) theadRow.removeChild(theadRow.lastChild);
+      weeks.forEach((w, i) => {
+        const th = document.createElement('th');
+        th.textContent = weekLabel(i);
+        th.className = 'sub';
+        theadRow.appendChild(th);
+      });
+      ['TOTAL','REMAINING (budget→left)',''].forEach((lbl, i) => {
+        const th = document.createElement('th');
+        th.textContent = lbl;
+        if (i === 2) th.style.width = '32px';
+        theadRow.appendChild(th);
+      });
+
+      // Rebuild tbody
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      const catMap = {};
+      CATS.forEach(c => catMap[c] = []);
+      rows.forEach(r => { if (catMap[r.cat]) catMap[r.cat].push(r); });
+
+      // BUG 9 FIX: removed dead totalIncome/totalExpense variables — totals are
+      // calculated inside buildTotalRow; accumulating them here served no purpose.
+
+      CATS.forEach(cat => {
+        const catRows = catMap[cat] || [];
+
+        // Section header
+        const secTr = document.createElement('tr');
+        secTr.className = 'section-row';
+        const secTd = document.createElement('td');
+        secTd.colSpan = weeks.length + 4;
+        secTd.textContent = '// ' + cat;
+        secTr.appendChild(secTd);
+        tbody.appendChild(secTr);
+
+        catRows.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.dataset.id = row.id;
+
+          // Name
+          const nameTd = document.createElement('td');
+          nameTd.className = 'name-editable';
+          const nameInp = document.createElement('input');
+          nameInp.value = row.name;
+          nameInp.style.cssText = 'background:transparent;border:none;outline:none;width:100%;text-align:left;font-family:Fira Code,monospace;font-size:12px;font-weight:400;color:var(--text);padding:0;';
+          nameInp.addEventListener('change', e => { row.name = e.target.value; scheduleSave(); });
+          nameTd.appendChild(nameInp);
+          tr.appendChild(nameTd);
+
+          // ── helper: recalculate and repaint this row's remaining cell ──
+          // Fix 7: const arrow fn instead of function declaration (hoisting-safe in all envs)
+          const updateRowRemaining = () => {
+            let rt = 0;
+            weeks.forEach(ww => rt += row.amounts[ww] || 0);
+            const rtCell = tr.querySelector('.row-total');
+            if (rtCell) rtCell.textContent = rt ? '₱' + rt.toLocaleString() : '—';
+
+            const budget = row.budget || 0;
+            const remCell = tr.querySelector('.row-rem-display');
+            if (!remCell) return;
+            if (!budget) {
+              remCell.textContent = '—';
+              remCell.className = 'row-rem-display remain-zero';
+              remCell.style.textShadow = '';
+            } else {
+              const left = budget - rt;
+              remCell.textContent = (left < 0 ? '-₱' : '₱') + Math.abs(left).toLocaleString();
+              if (left < 0) {
+                remCell.className = 'row-rem-display remain-neg';
+                remCell.style.textShadow = '';
+              } else if (left === 0) {
+                remCell.className = 'row-rem-display remain-zero';
+                remCell.style.textShadow = '';
+              } else {
+                remCell.className = 'row-rem-display remain-pos';
+                remCell.style.textShadow = 'var(--glow-sm)';
+              }
+            }
+          }
+
+          // Week amount cells
+          let rowTotal = 0;
+          weeks.forEach(w => {
+            const td = document.createElement('td');
+            td.className = 'editable amount-cell';
+            const val = row.amounts[w] || 0;
+            if (val) { td.classList.add('has-value'); rowTotal += val; }
+
+            const inp = document.createElement('input');
+            inp.value = val ? val.toLocaleString() : '';
+            inp.placeholder = '—';
+            inp.style.cssText = 'background:transparent;border:none;outline:none;width:100%;text-align:right;font-family:Fira Code,monospace;font-size:12px;color:inherit;padding:0;caret-color:var(--green);';
+            inp.addEventListener('focus', e => e.target.select());
+            inp.addEventListener('change', e => {
+              let v = parseFloat(e.target.value.replace(/,/g,'')) || 0;
+              if (v < 0) v = 0;
+              row.amounts[w] = v;
+              e.target.value = v ? v.toLocaleString() : '';
+              if (v) td.classList.add('has-value'); else td.classList.remove('has-value');
+              scheduleSave();
+              refreshKPI();
+              updateRowRemaining();
+              buildTotalRow(weeks, cache[mKey(currentYear,currentMonth)].rows);
+            });
+            td.appendChild(inp);
+            tr.appendChild(td);
+          });
+
+          // Total cell
+          const totalTd = document.createElement('td');
+          totalTd.className = 'total-col row-total';
+          totalTd.textContent = rowTotal ? '₱' + rowTotal.toLocaleString() : '—';
+          tr.appendChild(totalTd);
+
+          // ── REMAINING cell — editable budget input + live deduction display ──
+          const remTd = document.createElement('td');
+          remTd.className = 'editable remain-td';
+          remTd.style.cssText = 'min-width:110px;padding:0;position:relative;';
+
+          // The budget input (user types their budget here)
+          const remInp = document.createElement('input');
+          const budgetVal = row.budget || 0;
+          remInp.value = budgetVal ? budgetVal.toLocaleString() : '';
+          remInp.placeholder = 'set budget';
+          remInp.style.cssText = 'background:transparent;border:none;outline:none;width:100%;text-align:right;font-family:Fira Code,monospace;font-size:11px;color:var(--muted);padding:9px 14px;caret-color:var(--green);';
+          remInp.title = 'Enter budget for this row';
+          remInp.addEventListener('focus', e => {
+            e.target.select();
+            // Show the raw input when focused, hide the display
+            const disp = tr.querySelector('.row-rem-display');
+            if (disp) disp.style.display = 'none';
+            e.target.style.color = 'var(--green)';
+          });
+          remInp.addEventListener('blur', e => {
+            const disp = tr.querySelector('.row-rem-display');
+            if (disp) disp.style.display = '';
+            e.target.style.color = 'var(--muted)';
+          });
+          remInp.addEventListener('change', e => {
+            let v = parseFloat(e.target.value.replace(/,/g,'')) || 0;
+            if (v < 0) v = 0;
+            row.budget = v;
+            e.target.value = v ? v.toLocaleString() : '';
+            scheduleSave();
+            updateRowRemaining();
+          });
+          remTd.appendChild(remInp);
+
+          // The display span — shows remaining AFTER deduction (overlaid on top)
+          const remDisplay = document.createElement('span');
+          remDisplay.className = 'row-rem-display remain-zero';
+          remDisplay.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding-right:14px;font-family:Fira Code,monospace;font-size:12px;pointer-events:none;';
+          remDisplay.textContent = '—';
+          remTd.appendChild(remDisplay);
+          tr.appendChild(remTd);
+
+          // Fix 6: use requestAnimationFrame — fires once after paint, not on detached nodes
+          requestAnimationFrame(() => { if (tr.isConnected) updateRowRemaining(); });
+
+          // Delete button
+          const delTd = document.createElement('td');
+          delTd.style.textAlign = 'center';
+          const delBtn = document.createElement('button');
+          delBtn.className = 'del-btn';
+          delBtn.textContent = '×';
+          delBtn.title = 'Delete row';
+          delBtn.addEventListener('click', () => {
+            const d = cache[mKey(currentYear, currentMonth)];
+            const idx = d.rows.findIndex(r => r.id === row.id);
+            if (idx !== -1) { d.rows.splice(idx, 1); scheduleSave(); renderTable(); refreshKPI(); }
+          });
+          delTd.appendChild(delBtn);
+          tr.appendChild(delTd);
+
+          tbody.appendChild(tr);
+        });
+
+        // Add row button
+        const addTr = document.createElement('tr');
+        addTr.className = 'add-row';
+        const addTd = document.createElement('td');
+        addTd.colSpan = weeks.length + 4;
+        const addBtn = document.createElement('button');
+        addBtn.className = 'add-row-btn';
+        addBtn.textContent = 'ADD ' + cat + ' ENTRY'; // Fix 7: CSS ::before already adds '+ '
+        addBtn.addEventListener('click', () => openModal(cat));
+        addTd.appendChild(addBtn);
+        addTr.appendChild(addTd);
+        tbody.appendChild(addTr);
+      });
+
+      // Grand total row
+      buildTotalRow(weeks, rows);
+    }
+
+    function buildTotalRow(weeks, rows) {
+      const existing = document.getElementById('grandTotalRow');
+      if (existing) existing.remove();
+
+      const tr = document.createElement('tr');
+      tr.className = 'total-row';
+      tr.id = 'grandTotalRow';
+
+      const labelTd = document.createElement('td');
+      labelTd.textContent = 'REMAINING FUND';
+      tr.appendChild(labelTd);
+
+      let totalInc = 0, totalExp = 0;
+
+      weeks.forEach(w => {
+        let wInc = 0, wExp = 0;
+        rows.forEach(r => {
+          const v = (r.amounts ? r.amounts[w] : 0) || 0;
+          if (r.cat === 'INCOME') wInc += v; else wExp += v;
+        });
+        totalInc += wInc; totalExp += wExp;
+        const rem = wInc - wExp;
+        const td = document.createElement('td');
+        td.textContent = rem !== 0 ? (rem < 0 ? '-₱' : '₱') + Math.abs(rem).toLocaleString() : '₱0';
+        td.style.color = rem < 0 ? 'var(--danger)' : rem > 0 ? 'var(--accent)' : 'var(--muted)';
+        tr.appendChild(td);
+      });
+
+      const totalTd = document.createElement('td');
+      totalTd.textContent = '₱' + totalInc.toLocaleString();
+      tr.appendChild(totalTd);
+
+      const bal = totalInc - totalExp;
+      const balTd = document.createElement('td');
+      balTd.textContent = (bal < 0 ? '-₱' : '₱') + Math.abs(bal).toLocaleString();
+      balTd.style.color = bal < 0 ? 'var(--danger)' : 'var(--accent)';
+      tr.appendChild(balTd);
+
+      tr.appendChild(document.createElement('td'));
+      document.getElementById('tbody').appendChild(tr);
+    }
+
+    // BUG 10 FIX: rebuildTotalRow was a redundant pass-through; call buildTotalRow directly above.
+
+    function refreshKPI() {
+      const data = cache[mKey(currentYear, currentMonth)];
+      if (!data) return;
+      let inc = 0, exp = 0;
+      data.rows.forEach(r => {
+        // Fix 3: guard for rows loaded from DB that may not have amounts (old/corrupted data)
+        if (!r.amounts) r.amounts = {};
+        const sum = Object.values(r.amounts).reduce((a,b) => a + (b||0), 0);
+        if (r.cat === 'INCOME') inc += sum; else exp += sum;
+      });
+      const bal = inc - exp;
+      // BUG 3 FIX: kpiRemaining now shows % of income spent (not a duplicate of balance)
+      const pct = inc > 0 ? Math.round((exp / inc) * 100) : 0;
+      document.getElementById('kpiIncome').textContent    = fmt(inc);
+      document.getElementById('kpiExpense').textContent   = fmt(exp);
+      document.getElementById('kpiBalance').textContent   = fmt(bal);
+      document.getElementById('kpiRemaining').textContent = pct + '% SPENT';
+      // BUG 4 FIX: dynamically colour the balance card based on positive/negative
+      const balEl = document.getElementById('kpiBalance');
+      balEl.style.color = bal < 0 ? 'var(--danger)' : bal === 0 ? 'var(--muted)' : 'var(--glow)';
+    }
+
+    /* ══════════════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════════════ */
+    function openModal(cat) {
+      document.getElementById('modalCategory').value = cat;
+      document.getElementById('modalName').value = '';
+      document.getElementById('addModal').classList.add('open');
+      setTimeout(() => document.getElementById('modalName').focus(), 100);
+    }
+
+    function closeModal() {
+      document.getElementById('addModal').classList.remove('open');
+    }
+
+    function confirmAddRow() {
+      const cat  = document.getElementById('modalCategory').value;
+      const name = document.getElementById('modalName').value.trim();
+      if (!name) { showToast('// ERROR — name required', true); return; }
+
+      const data = cache[mKey(currentYear, currentMonth)];
+      data.rows.push({ id: uid(), cat, name, amounts: {}, budget: 0 });
+      scheduleSave();
+      renderTable();
+      refreshKPI();
+      closeModal();
+      showToast('// ENTRY ADDED: ' + name.toUpperCase());
+    }
+
+    document.getElementById('addModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('addModal')) closeModal();
+    });
+    document.getElementById('modalName').addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmAddRow();
+    });
+
+    /* ══════════════════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════════════════ */
+    let toastTimer;
+    function showToast(msg, isError) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.borderColor = isError ? 'var(--danger)' : 'var(--glow)';
+      t.style.color = isError ? 'var(--danger)' : 'var(--glow)';
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    /* ══════════════════════════════════════════════════
+       HELPERS
+    ═══════════════════════════════════════════════════ */
+    function fmt(v) {
+      return new Intl.NumberFormat('en-PH', { style:'currency', currency:'PHP', minimumFractionDigits:2 }).format(v || 0);
+    }
+
+    // weekLabel: converts 0-based index to "1ST WEEK", "2ND WEEK" … "5TH WEEK"
+    function weekLabel(i) {
+      const labels = ['1ST WEEK','2ND WEEK','3RD WEEK','4TH WEEK','5TH WEEK'];
+      return labels[i] || (i + 1) + 'TH WEEK';
+    }
+  </script>
+</body>
+</html>
