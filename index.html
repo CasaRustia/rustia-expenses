@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXUS Budget — Household Finance OS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%23030712'/><text x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-family='monospace' fill='%2300d4ff'>N</text></svg>" />
+
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ═══════════════════ CSS VARIABLES ═══════════════════ */
+    :root {
+      --bg:      #030712;
+      --surface: #0a0f1e;
+      --card:    #0d1426;
+      --border:  #1a2744;
+      --glow:    #00d4ff;
+      --glow2:   #7c3aed;
+      --accent:  #00ffaa;
+      --danger:  #ff3366;
+      --warn:    #ffaa00;
+      --text:    #e2e8f0;
+      --muted:   #4a6080;
+      --dim:     #1e3a5f;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Exo 2', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline grid overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,.012) 2px, rgba(0,212,255,.012) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(0,212,255,.015) 40px, rgba(0,212,255,.015) 41px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Animated background orbs */
+    .bg-orb { position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; animation: orb-drift 12s ease-in-out infinite alternate; }
+    .bg-orb-1 { width:500px;height:500px;background:rgba(0,212,255,.07);top:-100px;left:-100px; }
+    .bg-orb-2 { width:400px;height:400px;background:rgba(124,58,237,.08);bottom:-50px;right:-50px;animation-delay:-6s; }
+    .bg-orb-3 { width:300px;height:300px;background:rgba(0,255,170,.05);top:40%;left:60%;animation-delay:-3s; }
+    @keyframes orb-drift { from{transform:translate(0,0)scale(1)}to{transform:translate(30px,20px)scale(1.1)} }
+
+    /* ═══════════════════ SHARED COMPONENTS ═══════════════════ */
+    .field-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--glow);
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .field-input {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(0,212,255,.04);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      letter-spacing: 1px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .field-input:focus {
+      border-color: var(--glow);
+      box-shadow: 0 0 20px rgba(0,212,255,.15), inset 0 0 10px rgba(0,212,255,.03);
+    }
+
+    select.field-input { appearance: none; cursor: pointer; }
+
+    /* ═══════════════════ LOADING SCREEN ═══════════════════ */
+    #loadingScreen {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      gap: 20px;
+    }
+
+    .loader-logo {
+      font-family: 'Orbitron', monospace;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      background: linear-gradient(135deg, var(--glow), var(--glow2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .loader-bar {
+      width: 200px;
+      height: 2px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loader-bar::after {
+      content: '';
+      display: block;
+      height: 100%;
+      width: 40%;
+      background: linear-gradient(90deg, var(--glow2), var(--glow));
+      border-radius: 2px;
+      animation: loader-slide 1.2s ease-in-out infinite;
+    }
+    @keyframes loader-slide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    .loader-text {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--muted);
+    }
+
+    /* ═══════════════════ LOGIN PAGE ═══════════════════ */
+    #loginPage {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      background: var(--bg);
+    }
+
+    .login-box {
+      position: relative;
+      width: 420px;
+      padding: 48px 40px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--card);
+      box-shadow: 0 0 60px rgba(0,212,255,.08), 0 0 120px rgba(124,58,237,.05);
+      animation: box-appear .6s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes box-appear { from{opacity:0;transform:translateY(30px)scale(.96)}to{opacity:1;transform:translateY(0)scale(1)} }
+
+    .login-box::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      background: linear-gradient(135deg, rgba(0,212,255,.3), transparent 50%, rgba(124,58,237,.3));
+      border-radius: 4px;
+      z-index: -1;
+    }
+    .login-box::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--glow), var(--glow2), transparent);
+      border-radius: 4px 4px 0 0;
+      animation: bar-pulse 3s linear infinite;
+    }
+    @keyframes bar-pulse { 0%,100%{opacity:.4}50%{opacity:1} }
+
+    .corner-tl,.corner-br { position:absolute;width:20px;height:20px;border-color:var(--glow);border-style:solid;opacity:.5; }
+    .corner-tl { top:12px;left:12px;border-width:1px 0 0 1px; }
+    .corner-br { bottom:12px;right:12px;border-width:0 1px 1px 0; }
+
+    .login-logo { text-align:center;margin-bottom:28px; }
+    .login-logo .nexus {
+      font-family: 'Orbitron', monospace;
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      background: linear-gradient(135deg, var(--glow), var(--glow2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .login-logo .sub { font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--muted);margin-top:6px; }
+
+    .auth-tabs { display:flex;gap:2px;margin-bottom:24px;border-bottom:1px solid var(--border); }
+    .auth-tab {
+      flex:1;
+      padding: 9px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: -1px;
+    }
+    .auth-tab.active { color:var(--glow);border-bottom-color:var(--glow); }
+
+    .field-group { margin-bottom: 16px; }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, rgba(0,212,255,.15), rgba(124,58,237,.15));
+      border: 1px solid var(--glow);
+      border-radius: 3px;
+      color: var(--glow);
+      font-family: 'Orbitron', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 4px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all .3s;
+      margin-top: 6px;
+    }
+    .login-btn::before {
+      content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+      background:linear-gradient(90deg,transparent,rgba(0,212,255,.2),transparent);
+      transition:left .4s;
+    }
+    .login-btn:hover::before { left:100%; }
+    .login-btn:hover { box-shadow:0 0 30px rgba(0,212,255,.3); }
+    .login-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+    .login-error {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--danger);
+      margin-top: 12px;
+      text-align: center;
+      min-height: 18px;
+      letter-spacing: 1px;
+    }
+
+    /* ═══════════════════ MAIN APP ═══════════════════ */
+    #app {
+      display: none;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 24px;
+      animation: fade-in .5s ease both;
+    }
+    @keyframes fade-in { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .topbar-left { display:flex;align-items:center;gap:16px; }
+    .logo-text {
+      font-family: 'Orbitron', monospace;
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg,var(--glow),var(--glow2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .logo-badge {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      background: rgba(0,212,255,.1);
+      border: 1px solid rgba(0,212,255,.2);
+      color: var(--glow);
+      padding: 3px 8px;
+      border-radius: 2px;
+    }
+    .topbar-right { display:flex;align-items:center;gap:12px; }
+    .status-dot {
+      width:8px;height:8px;border-radius:50%;
+      background:var(--accent);box-shadow:0 0 8px var(--accent);
+      animation:pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot { 0%,100%{opacity:1}50%{opacity:.4} }
+    .user-badge { font-family:'Share Tech Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:1px; }
+    .save-indicator {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--accent);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .save-indicator.visible { opacity: 1; }
+    .logout-btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .logout-btn:hover { border-color:var(--danger);color:var(--danger); }
+
+    /* Month nav */
+    .month-bar { display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px; }
+    .month-nav { display:flex;align-items:center;gap:12px; }
+    .month-nav button {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--glow);
+      width: 34px; height: 34px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+    }
+    .month-nav button:hover { border-color:var(--glow);box-shadow:0 0 12px rgba(0,212,255,.2); }
+    .month-title { font-family:'Orbitron',monospace;font-size:20px;font-weight:700;letter-spacing:3px; }
+    .month-title span { color:var(--glow); }
+
+    /* KPI cards */
+    .kpi-row { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px; }
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 18px 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card::before { content:'';position:absolute;top:0;left:0;right:0;height:2px; }
+    .kpi-card.income::before  { background:linear-gradient(90deg,transparent,var(--accent),transparent); }
+    .kpi-card.expense::before { background:linear-gradient(90deg,transparent,var(--danger),transparent); }
+    .kpi-card.balance::before { background:linear-gradient(90deg,transparent,var(--glow),transparent); }
+    .kpi-card.remaining::before { background:linear-gradient(90deg,transparent,var(--warn),transparent); }
+    .kpi-label { font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px; }
+    .kpi-value { font-family:'Orbitron',monospace;font-size:22px;font-weight:700;letter-spacing:1px; }
+    .kpi-card.income .kpi-value   { color:var(--accent); }
+    .kpi-card.expense .kpi-value  { color:var(--danger); }
+    .kpi-card.balance .kpi-value  { color:var(--glow); }
+    .kpi-card.remaining .kpi-value{ color:var(--warn); }
+
+    /* Tabs */
+    .tabs { display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border); }
+    .tab {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px; letter-spacing: 2px;
+      padding: 10px 20px;
+      background: transparent; border: none;
+      color: var(--muted); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .2s; margin-bottom: -1px;
+    }
+    .tab.active { color:var(--glow);border-bottom-color:var(--glow); }
+
+    /* Table */
+    .table-wrapper { background:var(--card);border:1px solid var(--border);border-radius:4px;overflow:auto;position:relative; }
+
+    /* Loading overlay on table */
+    .table-loading {
+      position: absolute;
+      inset: 0;
+      background: rgba(3,7,18,.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 3px;
+      color: var(--glow);
+      backdrop-filter: blur(2px);
+    }
+    .table-loading.hidden { display:none; }
+
+    table { width:100%;border-collapse:collapse;font-size:13px;min-width:800px; }
+
+    thead th {
+      background: rgba(0,212,255,.04);
+      padding: 12px 14px;
+      text-align: right;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--glow);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      position: sticky; top: 0; z-index: 2;
+    }
+    thead th:first-child { text-align:left;width:200px; }
+    thead th.sub { color:var(--muted);font-size:9px; }
+
+    .section-row td {
+      background: rgba(0,212,255,.03);
+      padding: 8px 14px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px; letter-spacing: 3px;
+      color: var(--glow2);
+      border-top: 1px solid rgba(124,58,237,.2);
+      border-bottom: 1px solid rgba(124,58,237,.1);
+    }
+
+    tbody tr:not(.section-row):not(.total-row):not(.add-row) { transition:background .15s; }
+    tbody tr:not(.section-row):not(.total-row):not(.add-row):hover { background:rgba(0,212,255,.04); }
+
+    tbody td {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(26,39,68,.7);
+      text-align: right;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+    }
+    tbody td:first-child { text-align:left;font-family:'Exo 2',sans-serif;font-size:13px;font-weight:500; }
+    tbody td.amount-cell { color:var(--muted); }
+    tbody td.amount-cell.has-value { color:var(--text); }
+    tbody td.total-col { color:var(--warn);font-weight:600; }
+    tbody td.remain-pos { color:var(--accent); }
+    tbody td.remain-neg { color:var(--danger); }
+    tbody td.remain-zero { color:var(--muted); }
+
+    .total-row td {
+      background: rgba(0,212,255,.06);
+      border-top: 1px solid rgba(0,212,255,.2);
+      border-bottom: 1px solid rgba(0,212,255,.2);
+      font-family: 'Orbitron', monospace;
+      font-size: 11px; font-weight: 700;
+      padding: 12px 14px;
+      color: var(--glow);
+      text-align: right;
+    }
+    .total-row td:first-child { text-align:left;letter-spacing:2px; }
+
+    /* Editable cells */
+    td.editable input {
+      background: transparent; border: none; outline: none;
+      width: 100%; text-align: right;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px; color: inherit; padding: 0;
+    }
+    td.editable:focus-within {
+      background: rgba(0,212,255,.06);
+      box-shadow: inset 0 0 0 1px rgba(0,212,255,.3);
+    }
+    td.name-editable input {
+      text-align: left;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 13px; width: 100%;
+    }
+
+    /* Add row */
+    .add-row td { padding:8px 14px;border-bottom:none; }
+    .add-row-btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      background: transparent;
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      padding: 6px 16px; border-radius: 3px;
+      cursor: pointer; transition: all .2s; white-space: nowrap;
+    }
+    .add-row-btn:hover { border-color:var(--glow);color:var(--glow);background:rgba(0,212,255,.05); }
+
+    .del-btn {
+      background: transparent; border: none;
+      color: var(--border); cursor: pointer;
+      font-size: 14px; padding: 2px 4px; border-radius: 2px;
+      transition: color .2s; line-height: 1;
+    }
+    .del-btn:hover { color:var(--danger); }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(3,7,18,.85);
+      z-index: 500; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open { display:flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 4px; padding: 32px; width: 440px;
+      position: relative; animation: box-appear .3s ease both;
+    }
+    .modal::before {
+      content:'';position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,var(--glow2),var(--glow),transparent);
+      border-radius:4px 4px 0 0;
+    }
+    .modal h3 { font-family:'Orbitron',monospace;font-size:14px;letter-spacing:3px;color:var(--glow);margin-bottom:22px; }
+    .modal .field-group { margin-bottom:16px; }
+    .modal .field-label { font-size:10px; }
+    .modal-actions { display:flex;gap:10px;margin-top:22px; }
+    .modal-confirm-btn {
+      flex:1;padding:12px;
+      background:linear-gradient(135deg,rgba(0,212,255,.15),rgba(124,58,237,.15));
+      border:1px solid var(--glow);border-radius:3px;
+      color:var(--glow);font-family:'Orbitron',monospace;
+      font-size:11px;letter-spacing:3px;cursor:pointer;transition:all .2s;
+    }
+    .modal-confirm-btn:hover { box-shadow:0 0 20px rgba(0,212,255,.25); }
+    .modal-cancel-btn {
+      padding:12px 20px;background:transparent;
+      border:1px solid var(--border);border-radius:3px;
+      color:var(--muted);font-family:'Share Tech Mono',monospace;
+      font-size:11px;cursor:pointer;transition:all .2s;
+    }
+    .modal-cancel-btn:hover { border-color:var(--danger);color:var(--danger); }
+
+    /* Toast */
+    .toast {
+      position:fixed;bottom:24px;right:24px;
+      background:var(--card);border:1px solid var(--glow);border-radius:3px;
+      padding:12px 20px;font-family:'Share Tech Mono',monospace;
+      font-size:12px;color:var(--glow);letter-spacing:1px;
+      z-index:999;transform:translateY(60px);opacity:0;
+      transition:all .3s cubic-bezier(.22,1,.36,1);pointer-events:none;
+    }
+    .toast.show { transform:translateY(0);opacity:1; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width:6px;height:6px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--dim);border-radius:3px; }
+    ::-webkit-scrollbar-thumb:hover { background:var(--glow); }
+
+    /* Responsive */
+    @media(max-width:700px) {
+      #app { padding:16px; }
+      .kpi-row { grid-template-columns:1fr 1fr; }
+      .month-title { font-size:16px; }
+      .login-box { width:calc(100vw - 40px);padding:36px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BG ORBS -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
+  <!-- ══════════ LOADING SCREEN ══════════ -->
+  <div id="loadingScreen">
+    <div class="loader-logo">NEXUS</div>
+    <div class="loader-bar"></div>
+    <div class="loader-text">INITIALIZING SESSION...</div>
+  </div>
+
+  <!-- ══════════ LOGIN PAGE ══════════ -->
+  <div id="loginPage">
+    <div class="login-box">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+
+      <div class="login-logo">
+        <div class="nexus">NEXUS</div>
+        <div class="sub">HOUSEHOLD FINANCE OS · v2.6</div>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignIn" onclick="switchAuthTab('signin')">SIGN IN</button>
+        <button class="auth-tab" id="tabSignUp" onclick="switchAuthTab('signup')">SIGN UP</button>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">// EMAIL ADDRESS</label>
+        <input class="field-input" id="authEmail" type="email" placeholder="user@example.com" autocomplete="email" />
+      </div>
+      <div class="field-group">
+        <label class="field-label">// PASSWORD</label>
+        <input class="field-input" id="authPassword" type="password" placeholder="············" autocomplete="current-password" />
+      </div>
+
+      <button class="login-btn" id="authBtn" onclick="handleAuth()">INITIALIZE SESSION ›</button>
+      <div class="login-error" id="authError"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ MAIN APP ══════════ -->
+  <div id="app">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="logo-text">NEXUS</div>
+        <div class="logo-badge">BUDGET OS</div>
+      </div>
+      <div class="topbar-right">
+        <div class="status-dot"></div>
+        <div class="user-badge" id="userLabel">USER: —</div>
+        <div class="save-indicator" id="saveIndicator">// SAVED ✓</div>
+        <button class="logout-btn" onclick="doLogout()">LOGOUT</button>
+      </div>
+    </div>
+
+    <!-- MONTH NAV -->
+    <div class="month-bar">
+      <div class="month-nav">
+        <button onclick="prevMonth()">‹</button>
+        <div class="month-title" id="monthTitle">APRIL <span>2026</span></div>
+        <button onclick="nextMonth()">›</button>
+      </div>
+    </div>
+
+    <!-- KPI ROW -->
+    <div class="kpi-row">
+      <div class="kpi-card income">
+        <div class="kpi-label">// TOTAL INCOME</div>
+        <div class="kpi-value" id="kpiIncome">₱0.00</div>
+      </div>
+      <div class="kpi-card expense">
+        <div class="kpi-label">// TOTAL EXPENSES</div>
+        <div class="kpi-value" id="kpiExpense">₱0.00</div>
+      </div>
+      <div class="kpi-card balance">
+        <div class="kpi-label">// NET BALANCE</div>
+        <div class="kpi-value" id="kpiBalance">₱0.00</div>
+      </div>
+      <div class="kpi-card remaining">
+        <div class="kpi-label">// % OF INCOME SPENT</div>
+        <div class="kpi-value" id="kpiRemaining">₱0.00</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab active">WEEKLY BUDGET MATRIX</button>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrapper" style="position:relative;">
+      <div class="table-loading" id="tableLoading">// FETCHING DATA...</div>
+      <table id="budgetTable">
+        <thead>
+          <tr id="theadRow">
+            <th style="text-align:left;">CATEGORY / ITEM</th>
+            <th>TOTAL</th>
+            <th>REMAINING</th>
+            <th style="width:32px;"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ADD ROW MODAL -->
+  <div class="modal-overlay" id="addModal">
+    <div class="modal">
+      <h3>ADD NEW ENTRY</h3>
+      <div class="field-group">
+        <label class="field-label">// CATEGORY</label>
+        <select class="field-input" id="modalCategory">
+          <option value="INCOME">INCOME</option>
+          <option value="LOANS">LOANS</option>
+          <option value="HOUSING">HOUSING</option>
+          <option value="EDUCATION">EDUCATION</option>
+          <option value="UTILITIES">UTILITIES</option>
+          <option value="PLANS">PLANS</option>
+          <option value="ALLOWANCE">ALLOWANCE</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">// ITEM NAME</label>
+        <input class="field-input" id="modalName" type="text" placeholder="e.g. Electricity" />
+      </div>
+      <div class="modal-actions">
+        <button class="modal-confirm-btn" onclick="confirmAddRow()">ADD ENTRY</button>
+        <button class="modal-cancel-btn" onclick="closeModal()">CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    /* ══════════════════════════════════════════════════
+       ⚠️  CONFIGURATION — Replace with your Supabase values
+       Get these from: Supabase Dashboard → Project Settings → API
+    ═══════════════════════════════════════════════════ */
+    const SUPABASE_URL      = 'https://dnvzzlcyintbqehbxigr.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRudnp6bGN5aW50YnFlaGJ4aWdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNjQ1NTQsImV4cCI6MjA4OTc0MDU1NH0.L34re27ZhFBKMAHhyGkXeBww8-mRNP0bgavWiBytxFs';
+
+    /* ══════════════════════════════════════════════════
+       SUPABASE CLIENT INIT
+    ═══════════════════════════════════════════════════ */
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ══════════════════════════════════════════════════
+       STATE
+    ═══════════════════════════════════════════════════ */
+    let currentUser  = null;
+    let currentYear  = 2026;
+    let currentMonth = 3;           // 0-indexed  (3 = April)
+    let cache        = {};          // in-memory cache  key → monthData
+    let saveTimer    = null;
+    let authMode     = 'signin';    // 'signin' | 'signup'
+
+    const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                    'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+    const CATS   = ['INCOME','LOANS','HOUSING','EDUCATION','UTILITIES','PLANS','ALLOWANCE'];
+
+    /* ══════════════════════════════════════════════════
+       AUTH
+    ═══════════════════════════════════════════════════ */
+    function switchAuthTab(mode) {
+      authMode = mode;
+      document.getElementById('tabSignIn').classList.toggle('active', mode === 'signin');
+      document.getElementById('tabSignUp').classList.toggle('active', mode === 'signup');
+      document.getElementById('authBtn').textContent =
+        mode === 'signin' ? 'INITIALIZE SESSION ›' : 'CREATE ACCOUNT ›';
+      const errEl = document.getElementById('authError');
+      errEl.textContent = '';
+      errEl.style.color = 'var(--danger)'; // BUG 6 FIX: always reset colour on tab switch
+      document.getElementById('authPassword').autocomplete =
+        mode === 'signin' ? 'current-password' : 'new-password';
+    }
+
+    async function handleAuth() {
+      const email    = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const btn      = document.getElementById('authBtn');
+      const errEl    = document.getElementById('authError');
+
+      if (!email || !password) {
+        errEl.textContent = '// ERROR — email and password required';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '// CONNECTING...';
+      errEl.textContent = '';
+
+      let result;
+      if (authMode === 'signin') {
+        result = await db.auth.signInWithPassword({ email, password });
+      } else {
+        result = await db.auth.signUp({ email, password });
+      }
+
+      btn.disabled = false;
+      switchAuthTab(authMode); // restore button text
+
+      if (result.error) {
+        // The most common 400 cause is unconfirmed email — surface a clear message
+        const msg = result.error.message.toLowerCase();
+        let display = '// ' + result.error.message.toUpperCase();
+        if (msg.includes('invalid login') || msg.includes('email not confirmed') || msg.includes('bad request')) {
+          display = '// LOGIN FAILED — if you just signed up, check your email to confirm your account first. Or go to Supabase → Auth → Settings and disable email confirmation.';
+        }
+        errEl.textContent = display;
+        shakeLogin();
+        return;
+      }
+
+      if (authMode === 'signup' && !result.data.session) {
+        errEl.style.color = 'var(--accent)';
+        errEl.textContent = '// CHECK YOUR EMAIL TO CONFIRM YOUR ACCOUNT';
+      }
+      // onAuthStateChange handles the rest
+    }
+
+    function shakeLogin() {
+      const box = document.querySelector('.login-box');
+      [10, -10, 5, 0].forEach((x, i) =>
+        setTimeout(() => { box.style.transform = `translateX(${x}px)`; }, i * 80));
+    }
+
+    async function doLogout() {
+      clearTimeout(saveTimer); // cancel any pending debounced save
+      currentUser = null;      // BUG 15 FIX: clear user immediately — don't wait for the
+                               // async onAuthStateChange event; any in-flight code that
+                               // checks currentUser will now correctly see null
+      cache = {};
+      await db.auth.signOut();
+      document.getElementById('app').style.display = 'none';
+      document.getElementById('loginPage').style.display = 'flex';
+      document.getElementById('authEmail').value = '';
+      document.getElementById('authPassword').value = '';
+      document.getElementById('authError').textContent = '';
+      document.getElementById('authError').style.color = 'var(--danger)';
+    }
+
+    document.getElementById('authPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleAuth();
+    });
+
+    /* ══════════════════════════════════════════════════
+       AUTH STATE LISTENER  (runs on page load + every auth change)
+    ═══════════════════════════════════════════════════ */
+    db.auth.onAuthStateChange(async (event, session) => {
+      // Hide the splash screen once Supabase has responded
+      document.getElementById('loadingScreen').style.display = 'none';
+
+      if (session && session.user) {
+        // BUG 1 FIX: Only load & render on actual sign-in / initial session.
+        // TOKEN_REFRESHED and USER_UPDATED must NOT trigger a re-render —
+        // that would wipe any in-progress cell edits every hour.
+        const isFirstLoad = !currentUser;
+        currentUser = session.user;
+        const handle = session.user.email.split('@')[0].toUpperCase();
+        document.getElementById('userLabel').textContent = 'USER: ' + handle;
+
+        if (isFirstLoad) {
+          document.getElementById('loginPage').style.display = 'none';
+          document.getElementById('app').style.display = 'block';
+          await loadAndRender();
+        }
+      } else {
+        currentUser = null;
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginPage').style.display = 'flex';
+      }
+    });
+
+    /* ══════════════════════════════════════════════════
+       SUPABASE DATA LAYER
+    ═══════════════════════════════════════════════════ */
+    function mKey(y, m) { return `${y}-${m}`; }
+
+    async function fetchMonthFromDB(y, m) {
+      // BUG 13 FIX: wrap in try/catch — a network timeout would otherwise throw an
+      // unhandled rejection that silently crashes ensureMonthLoaded
+      try {
+        const { data, error } = await db
+          .from('budgets')
+          .select('data')
+          .eq('user_id', currentUser.id)
+          .eq('month_key', mKey(y, m))
+          .maybeSingle();
+
+        if (error) { console.error('Fetch error:', error); return null; }
+        return data ? data.data : null;
+      } catch (err) {
+        console.error('fetchMonthFromDB network error:', err);
+        return null;
+      }
+    }
+
+    async function upsertMonthToDB(y, m) {
+      if (!currentUser) return;
+      // BUG 16 FIX: removed `updated_at` from payload — the DB trigger handle_updated_at()
+      // already sets this on every UPDATE. Sending it client-side is redundant and can
+      // conflict with strict Supabase RLS or trigger configurations.
+      const payload = {
+        user_id:   currentUser.id,
+        month_key: mKey(y, m),
+        data:      cache[mKey(y, m)],
+      };
+      const { error } = await db
+        .from('budgets')
+        .upsert(payload, { onConflict: 'user_id,month_key' });
+
+      if (error) { console.error('Save error:', error); showToast('// SAVE FAILED', true); return; }
+      showSaved();
+    }
+
+    function scheduleSave() {
+      // BUG 11 FIX: capture year/month BY VALUE right now, not when the timeout fires.
+      // Without this, navigating months within the 900ms window would save the edited
+      // data into the newly-selected month's record instead of the one that was changed.
+      const y = currentYear;
+      const m = currentMonth;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => upsertMonthToDB(y, m), 900);
+    }
+
+    function showSaved() {
+      const el = document.getElementById('saveIndicator');
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 1800);
+    }
+
+    /* ══════════════════════════════════════════════════
+       DATA DEFAULTS
+    ═══════════════════════════════════════════════════ */
+    let _uid = Date.now();
+    function uid() { return (++_uid).toString(36); }
+
+    function getWeekStarts(year, month) {
+      // BUG 8 FIX: removed unused `first` variable
+      const days = [];
+      let d = 1;
+      while (d <= new Date(year, month + 1, 0).getDate()) {
+        days.push(d);
+        d += 7;
+      }
+      return days.slice(0, 5);
+    }
+
+    function buildDefaultRows() {
+      return [
+        { id:uid(), cat:'INCOME',    name:'Expected Salary (Tatay)',       amounts:{} },
+        { id:uid(), cat:'INCOME',    name:'Expected Salary (Mima)',        amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'Home Credit Cash Loan',         amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'200K Loan | Laptops',           amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'Atome - Tatay',                 amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'Atome - Mima',                  amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'BillEase',                      amounts:{} },
+        { id:uid(), cat:'LOANS',     name:'PesoLoan',                      amounts:{} },
+        { id:uid(), cat:'HOUSING',   name:'House Rental',                  amounts:{} },
+        { id:uid(), cat:'EDUCATION', name:"Chad's Tuition",                amounts:{} },
+        { id:uid(), cat:'EDUCATION', name:"Lilo's Tuition",                amounts:{} },
+        { id:uid(), cat:'UTILITIES', name:'Electric Bill',                 amounts:{} },
+        { id:uid(), cat:'UTILITIES', name:'Water Bill',                    amounts:{} },
+        { id:uid(), cat:'UTILITIES', name:'WiFi',                          amounts:{} },
+        { id:uid(), cat:'PLANS',     name:'Plan Tatay',                    amounts:{} },
+        { id:uid(), cat:'PLANS',     name:'Plan Mima',                     amounts:{} },
+        { id:uid(), cat:'ALLOWANCE', name:'Home Allowance + Groceries',    amounts:{} },
+      ];
+    }
+
+    function buildDefaultData(y, m) {
+      return { weeks: getWeekStarts(y, m), rows: buildDefaultRows() };
+    }
+
+    // seedApril2026 removed — see Bug 14 fix above.
+
+    async function ensureMonthLoaded(y, m) {
+      const k = mKey(y, m);
+      if (cache[k]) return;
+
+      const remote = await fetchMonthFromDB(y, m);
+      if (remote) {
+        cache[k] = remote;
+      } else {
+        // BUG 14 FIX: removed seedApril2026 call — it pre-filled family-specific names
+        // (Tatay, Mima, Chad, Lilo) for EVERY new user, which is a privacy/UX problem.
+        // All new months now start with empty amounts and neutral row names only.
+        const fresh = buildDefaultData(y, m);
+        cache[k] = fresh;
+        await upsertMonthToDB(y, m);
+      }
+    }
+
+    /* ══════════════════════════════════════════════════
+       RENDER
+    ═══════════════════════════════════════════════════ */
+    let isLoading = false; // BUG 2 FIX: guard against concurrent month navigation
+
+    async function loadAndRender() {
+      document.getElementById('tableLoading').classList.remove('hidden');
+      await ensureMonthLoaded(currentYear, currentMonth);
+      document.getElementById('tableLoading').classList.add('hidden');
+      renderTable();
+      refreshKPI();
+    }
+
+    async function prevMonth() {
+      if (isLoading) return;
+      isLoading = true;
+      currentMonth--;
+      if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+      updateMonthTitle();
+      document.getElementById('tableLoading').classList.remove('hidden');
+      try { // BUG 12 FIX: always reset isLoading, even if fetch/render throws
+        await ensureMonthLoaded(currentYear, currentMonth);
+        renderTable();
+        refreshKPI();
+      } catch (err) {
+        console.error('prevMonth error:', err);
+        showToast('// ERROR LOADING MONTH DATA', true);
+      } finally {
+        document.getElementById('tableLoading').classList.add('hidden');
+        isLoading = false;
+      }
+    }
+
+    async function nextMonth() {
+      if (isLoading) return;
+      isLoading = true;
+      currentMonth++;
+      if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+      updateMonthTitle();
+      document.getElementById('tableLoading').classList.remove('hidden');
+      try { // BUG 12 FIX: always reset isLoading, even if fetch/render throws
+        await ensureMonthLoaded(currentYear, currentMonth);
+        renderTable();
+        refreshKPI();
+      } catch (err) {
+        console.error('nextMonth error:', err);
+        showToast('// ERROR LOADING MONTH DATA', true);
+      } finally {
+        document.getElementById('tableLoading').classList.add('hidden');
+        isLoading = false;
+      }
+    }
+
+    function updateMonthTitle() {
+      document.getElementById('monthTitle').innerHTML =
+        MONTHS[currentMonth] + ' <span>' + currentYear + '</span>';
+    }
+
+    function renderTable() {
+      updateMonthTitle();
+      const data  = cache[mKey(currentYear, currentMonth)];
+      const weeks = data.weeks;
+      const rows  = data.rows;
+
+      // Rebuild thead
+      const theadRow = document.getElementById('theadRow');
+      while (theadRow.children.length > 1) theadRow.removeChild(theadRow.lastChild);
+      weeks.forEach((w, i) => {
+        const th = document.createElement('th');
+        th.textContent = weekLabel(i);
+        th.className = 'sub';
+        theadRow.appendChild(th);
+      });
+      ['TOTAL','REMAINING',''].forEach((lbl, i) => {
+        const th = document.createElement('th');
+        th.textContent = lbl;
+        if (i === 2) th.style.width = '32px';
+        theadRow.appendChild(th);
+      });
+
+      // Rebuild tbody
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+
+      const catMap = {};
+      CATS.forEach(c => catMap[c] = []);
+      rows.forEach(r => { if (catMap[r.cat]) catMap[r.cat].push(r); });
+
+      // BUG 9 FIX: removed dead totalIncome/totalExpense variables — totals are
+      // calculated inside buildTotalRow; accumulating them here served no purpose.
+
+      CATS.forEach(cat => {
+        const catRows = catMap[cat] || [];
+
+        // Section header
+        const secTr = document.createElement('tr');
+        secTr.className = 'section-row';
+        const secTd = document.createElement('td');
+        secTd.colSpan = weeks.length + 4;
+        secTd.textContent = '// ' + cat;
+        secTr.appendChild(secTd);
+        tbody.appendChild(secTr);
+
+        catRows.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.dataset.id = row.id;
+
+          // Name
+          const nameTd = document.createElement('td');
+          nameTd.className = 'name-editable';
+          const nameInp = document.createElement('input');
+          nameInp.value = row.name;
+          nameInp.style.cssText = 'background:transparent;border:none;outline:none;width:100%;text-align:left;font-family:Exo 2,sans-serif;font-size:13px;font-weight:500;color:var(--text);padding:0;';
+          nameInp.addEventListener('change', e => { row.name = e.target.value; scheduleSave(); });
+          nameTd.appendChild(nameInp);
+          tr.appendChild(nameTd);
+
+          // Week amount cells
+          let rowTotal = 0;
+          weeks.forEach(w => {
+            const td = document.createElement('td');
+            td.className = 'editable amount-cell';
+            const val = row.amounts[w] || 0;
+            if (val) { td.classList.add('has-value'); rowTotal += val; }
+
+            const inp = document.createElement('input');
+            inp.value = val ? val.toLocaleString() : '';
+            inp.placeholder = '—';
+            inp.style.cssText = 'background:transparent;border:none;outline:none;width:100%;text-align:right;font-family:Share Tech Mono,monospace;font-size:12px;color:inherit;padding:0;';
+            inp.addEventListener('focus', e => e.target.select());
+            inp.addEventListener('change', e => {
+              // BUG 5 FIX: reject negative amounts
+              let v = parseFloat(e.target.value.replace(/,/g,'')) || 0;
+              if (v < 0) v = 0;
+              row.amounts[w] = v;
+              e.target.value = v ? v.toLocaleString() : '';
+              if (v) td.classList.add('has-value'); else td.classList.remove('has-value');
+              scheduleSave();
+              refreshKPI();
+              // Update row total in DOM
+              let rt = 0;
+              weeks.forEach(ww => rt += row.amounts[ww] || 0);
+              const rtCell = tr.querySelector('.row-total');
+              if (rtCell) rtCell.textContent = rt ? '₱' + rt.toLocaleString() : '—';
+              buildTotalRow(weeks, cache[mKey(currentYear,currentMonth)].rows);
+            });
+            td.appendChild(inp);
+            tr.appendChild(td);
+          });
+
+          // Total cell
+          const totalTd = document.createElement('td');
+          totalTd.className = 'total-col row-total';
+          totalTd.textContent = rowTotal ? '₱' + rowTotal.toLocaleString() : '—';
+          tr.appendChild(totalTd);
+
+          // Remaining cell (unused per-row; kept for layout)
+          const remTd = document.createElement('td');
+          remTd.textContent = '—';
+          remTd.className = 'remain-zero';
+          tr.appendChild(remTd);
+
+          // Delete button
+          const delTd = document.createElement('td');
+          delTd.style.textAlign = 'center';
+          const delBtn = document.createElement('button');
+          delBtn.className = 'del-btn';
+          delBtn.textContent = '×';
+          delBtn.title = 'Delete row';
+          delBtn.addEventListener('click', () => {
+            const d = cache[mKey(currentYear, currentMonth)];
+            const idx = d.rows.findIndex(r => r.id === row.id);
+            if (idx !== -1) { d.rows.splice(idx, 1); scheduleSave(); renderTable(); refreshKPI(); }
+          });
+          delTd.appendChild(delBtn);
+          tr.appendChild(delTd);
+
+          tbody.appendChild(tr);
+        });
+
+        // Add row button
+        const addTr = document.createElement('tr');
+        addTr.className = 'add-row';
+        const addTd = document.createElement('td');
+        addTd.colSpan = weeks.length + 4;
+        const addBtn = document.createElement('button');
+        addBtn.className = 'add-row-btn';
+        addBtn.textContent = '+ ADD ' + cat + ' ENTRY';
+        addBtn.addEventListener('click', () => openModal(cat));
+        addTd.appendChild(addBtn);
+        addTr.appendChild(addTd);
+        tbody.appendChild(addTr);
+      });
+
+      // Grand total row
+      buildTotalRow(weeks, rows);
+    }
+
+    function buildTotalRow(weeks, rows) {
+      const existing = document.getElementById('grandTotalRow');
+      if (existing) existing.remove();
+
+      const tr = document.createElement('tr');
+      tr.className = 'total-row';
+      tr.id = 'grandTotalRow';
+
+      const labelTd = document.createElement('td');
+      labelTd.textContent = 'REMAINING FUND';
+      tr.appendChild(labelTd);
+
+      let totalInc = 0, totalExp = 0;
+
+      weeks.forEach(w => {
+        let wInc = 0, wExp = 0;
+        rows.forEach(r => {
+          const v = r.amounts[w] || 0;
+          if (r.cat === 'INCOME') wInc += v; else wExp += v;
+        });
+        totalInc += wInc; totalExp += wExp;
+        const rem = wInc - wExp;
+        const td = document.createElement('td');
+        td.textContent = rem !== 0 ? (rem < 0 ? '-₱' : '₱') + Math.abs(rem).toLocaleString() : '₱0';
+        td.style.color = rem < 0 ? 'var(--danger)' : rem > 0 ? 'var(--accent)' : 'var(--muted)';
+        tr.appendChild(td);
+      });
+
+      const totalTd = document.createElement('td');
+      totalTd.textContent = '₱' + totalInc.toLocaleString();
+      tr.appendChild(totalTd);
+
+      const bal = totalInc - totalExp;
+      const balTd = document.createElement('td');
+      balTd.textContent = (bal < 0 ? '-₱' : '₱') + Math.abs(bal).toLocaleString();
+      balTd.style.color = bal < 0 ? 'var(--danger)' : 'var(--accent)';
+      tr.appendChild(balTd);
+
+      tr.appendChild(document.createElement('td'));
+      document.getElementById('tbody').appendChild(tr);
+    }
+
+    // BUG 10 FIX: rebuildTotalRow was a redundant pass-through; call buildTotalRow directly above.
+
+    function refreshKPI() {
+      const data = cache[mKey(currentYear, currentMonth)];
+      if (!data) return;
+      let inc = 0, exp = 0;
+      data.rows.forEach(r => {
+        const sum = Object.values(r.amounts).reduce((a,b) => a + (b||0), 0);
+        if (r.cat === 'INCOME') inc += sum; else exp += sum;
+      });
+      const bal = inc - exp;
+      // BUG 3 FIX: kpiRemaining now shows % of income spent (not a duplicate of balance)
+      const pct = inc > 0 ? Math.round((exp / inc) * 100) : 0;
+      document.getElementById('kpiIncome').textContent    = fmt(inc);
+      document.getElementById('kpiExpense').textContent   = fmt(exp);
+      document.getElementById('kpiBalance').textContent   = fmt(bal);
+      document.getElementById('kpiRemaining').textContent = pct + '% SPENT';
+      // BUG 4 FIX: dynamically colour the balance card based on positive/negative
+      const balEl = document.getElementById('kpiBalance');
+      balEl.style.color = bal < 0 ? 'var(--danger)' : bal === 0 ? 'var(--muted)' : 'var(--glow)';
+    }
+
+    /* ══════════════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════════════ */
+    function openModal(cat) {
+      document.getElementById('modalCategory').value = cat;
+      document.getElementById('modalName').value = '';
+      document.getElementById('addModal').classList.add('open');
+      setTimeout(() => document.getElementById('modalName').focus(), 100);
+    }
+
+    function closeModal() {
+      document.getElementById('addModal').classList.remove('open');
+    }
+
+    function confirmAddRow() {
+      const cat  = document.getElementById('modalCategory').value;
+      const name = document.getElementById('modalName').value.trim();
+      if (!name) { showToast('// ERROR — name required', true); return; }
+
+      const data = cache[mKey(currentYear, currentMonth)];
+      data.rows.push({ id: uid(), cat, name, amounts: {} });
+      scheduleSave();
+      renderTable();
+      refreshKPI();
+      closeModal();
+      showToast('// ENTRY ADDED: ' + name.toUpperCase());
+    }
+
+    document.getElementById('addModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('addModal')) closeModal();
+    });
+    document.getElementById('modalName').addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmAddRow();
+    });
+
+    /* ══════════════════════════════════════════════════
+       TOAST
+    ═══════════════════════════════════════════════════ */
+    let toastTimer;
+    function showToast(msg, isError) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.borderColor = isError ? 'var(--danger)' : 'var(--glow)';
+      t.style.color = isError ? 'var(--danger)' : 'var(--glow)';
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    /* ══════════════════════════════════════════════════
+       HELPERS
+    ═══════════════════════════════════════════════════ */
+    function fmt(v) {
+      return new Intl.NumberFormat('en-PH', { style:'currency', currency:'PHP', minimumFractionDigits:2 }).format(v || 0);
+    }
+
+    // weekLabel: converts 0-based index to "1ST WEEK", "2ND WEEK" … "5TH WEEK"
+    function weekLabel(i) {
+      const labels = ['1ST WEEK','2ND WEEK','3RD WEEK','4TH WEEK','5TH WEEK'];
+      return labels[i] || (i + 1) + 'TH WEEK';
+    }
+  </script>
+</body>
+</html>
